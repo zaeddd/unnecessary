@@ -37,6 +37,16 @@ document.addEventListener('overcomplicator:upload', event => {
 
 Upload methods include `File Basketball`, `File Catapult`, and `The Boring Button (shameful)`.
 
+## Unnecessary Tools Workshop
+
+The page also includes twenty interactive mini-tools: File Airport Security, HTML Courtroom, File Washing Machine, Loading Bar Olympics, File Dating Simulator, The Overthinking Button, Digital Plant Care, File Escape Room, The Bureaucracy Generator, HTML Fashion Show, The Digital Pet Rock, File Fishing, The Productivity Slot Machine, The File Talent Show, The Unnecessary Password Generator, The Mouse Olympics, The Digital Time Machine, The HTML Detective, The Digital Weather Station, and The Undo Museum.
+
+The workshop has a searchable directory grouped into Games, File Tools, HTML Tools, and Just for Fun. Each tool opens as its own in-page view and has a `#tool/<name>` deep link. **Random tool** and **Surprise Me** choose from the currently visible directory results. The **Make This Task Unnecessarily Complicated** flow supports uploading the selected file, formatting the courtroom HTML, or copying overthinking text; its Skip button runs the chosen action immediately.
+
+Shared achievements, tool visits, statistics, and personal bests are stored locally in the browser. The achievements panel includes a reset option with a confirmation prompt. Reduced-motion preferences are respected, and the existing sound toggle remains available with a lower default volume.
+
+The scanner, race, dating dialog, slot rewards, fictional forecasts, deliberation, and paperwork are entertainment. Airport screening does not modify the source file; its safe copy is byte-for-byte identical. The washing machine can create a separate HTML copy with trailing whitespace cleaned when that option is selected. The courtroom and fashion show have basic HTML indentation helpers. The talent show reads files locally and never executes uploaded HTML. Review generated copies before using them. Clipboard access depends on browser permissions. Plant and pet-rock progress save locally only when you choose their save buttons; Mouse Olympics keeps a local personal best. The password tool generates fictional jokes only, never credentials for real accounts. The Undo Museum records the current page session; its restore action applies only to text edits it observed, and other actions are history entries rather than reversible changes.
+
 ## Embed it
 
 The simplest option is to serve `index.html` directly or embed it in an `<iframe>`. The widget's styles use the `oc-` prefix and its JavaScript is enclosed in an IIFE. For inline integration, the page's `<style>` block, `<section class="oc-root">`, and `<script>` block can be copied into another page; configure the upload endpoint there as described above.
