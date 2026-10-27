@@ -1,0 +1,1200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The Overcomplicator: File Uploads, Needlessly</title>
+<!--
+  HOW TO USE ON YOUR SITE
+  1. Easiest: upload this file and link to it or put it in an <iframe>.
+  2. Or paste the <style> block, the <section class="oc-root"> block and the <script> block into any page.
+     Everything is namespaced (oc-*) and wrapped in an IIFE, so it will not clash with your CSS or JS.
+  3. Real uploads: set CONFIG.uploadUrl in the script to your endpoint. It receives multipart/form-data
+     with the file under CONFIG.fieldName. Leave it blank for demo mode (nothing leaves the browser).
+  4. React to results:
+       document.addEventListener('overcomplicator:upload', e => console.log(e.detail));
+     detail = { file, via, ok, error }
+-->
+<style>
+body{margin:0;padding:12px;background:#0a0b11}
+
+.oc-root{--oc-bg:#12141d;--oc-panel:#1b1e2c;--oc-line:#2b2f45;--oc-ink:#f4f1e8;--oc-dim:#a3a8c0;
+  --oc-accent:#ff7a2f;--oc-good:#3ddc97;--oc-bad:#ff5c7a;--oc-gold:#ffd166;
+  font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--oc-ink);
+  background:var(--oc-bg);border:1px solid var(--oc-line);border-radius:18px;padding:18px;
+  max-width:880px;margin:24px auto;box-sizing:border-box}
+.oc-root *{box-sizing:border-box}
+.oc-root [hidden]{display:none!important}
+
+.oc-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.oc-root h2{margin:0;font-size:26px;line-height:1.15;letter-spacing:-.01em}
+.oc-sub{margin:4px 0 0;color:var(--oc-dim);font-size:15px}
+.oc-h3{margin:22px 0 4px;font-size:15px;color:var(--oc-dim);font-weight:600}
+
+.oc-btn{display:inline-block;background:var(--oc-panel);color:var(--oc-ink);border:1px solid var(--oc-line);
+  border-radius:10px;padding:8px 14px;font:600 14px/1.2 inherit;font-family:inherit;cursor:pointer;
+  transition:transform .08s,background .15s,border-color .15s}
+.oc-btn:hover{border-color:var(--oc-accent)}
+.oc-btn:active{transform:translateY(1px)}
+.oc-btn:focus-visible,.oc-tab:focus-visible,.oc-link:focus-visible{outline:3px solid var(--oc-gold);outline-offset:2px}
+.oc-btn[disabled]{opacity:.45;cursor:not-allowed}
+.oc-primary{background:var(--oc-accent);border-color:var(--oc-accent);color:#1a0d04;font-size:16px;padding:11px 20px}
+.oc-primary:hover{background:#ff9150}
+.oc-ghost{background:transparent}
+.oc-small{padding:6px 12px}
+.oc-link{background:none;border:0;color:var(--oc-gold);font:inherit;font-size:14px;text-decoration:underline;cursor:pointer;padding:2px}
+
+.oc-filebar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:16px 0 6px;padding:10px 12px;
+  background:var(--oc-panel);border:1px solid var(--oc-line);border-radius:12px;font-size:14px}
+.oc-progress{display:flex;align-items:center;gap:10px;margin:6px 0;font-size:13px;color:var(--oc-dim)}
+.oc-barwrap{flex:1;height:8px;background:var(--oc-panel);border-radius:99px;overflow:hidden;border:1px solid var(--oc-line)}
+.oc-bar{height:100%;width:0;background:linear-gradient(90deg,var(--oc-accent),var(--oc-gold));transition:width .08s linear}
+
+.oc-tabs{display:flex;gap:8px;margin:14px 0 10px;flex-wrap:wrap}
+.oc-tab{background:var(--oc-panel);color:var(--oc-ink);border:1px solid var(--oc-line);border-radius:999px;
+  padding:9px 18px;font:700 15px/1 inherit;font-family:inherit;cursor:pointer}
+.oc-tab[aria-selected="true"]{background:var(--oc-accent);border-color:var(--oc-accent);color:#1a0d04}
+
+.oc-arena{position:relative;border-radius:14px;overflow:hidden;outline:4px dashed transparent;outline-offset:-4px;
+  transition:outline-color .15s;background:#000}
+.oc-arena.oc-drag{outline-color:var(--oc-accent)}
+.oc-arena canvas{display:block;width:100%;height:auto;touch-action:none;user-select:none;-webkit-user-select:none}
+
+.oc-hud{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 6px}
+.oc-chip{background:var(--oc-panel);border:1px solid var(--oc-line);border-radius:999px;padding:4px 12px;font-size:14px;color:var(--oc-dim)}
+.oc-chip b{color:var(--oc-gold);font-variant-numeric:tabular-nums;margin-left:4px}
+
+.oc-check{display:inline-flex;align-items:center;gap:8px;font-size:14px;color:var(--oc-dim);cursor:pointer;margin:4px 0}
+.oc-check input{accent-color:var(--oc-accent);width:16px;height:16px}
+.oc-help{margin:6px 0 0;font-size:13.5px;color:var(--oc-dim)}
+
+.oc-controls{display:grid;grid-template-columns:1fr 1fr auto;gap:12px 18px;align-items:end;margin:14px 0 6px}
+.oc-ctl{display:flex;flex-direction:column;gap:6px;font-size:14px;color:var(--oc-dim)}
+.oc-ctl output{color:var(--oc-gold);font-weight:700;margin-left:6px}
+.oc-ctl input[type=range]{width:100%;accent-color:var(--oc-accent)}
+
+.oc-status{min-height:1.5em;margin:14px 0 0;padding:10px 14px;border-radius:10px;background:var(--oc-panel);
+  border:1px solid var(--oc-line);font-size:15px}
+.oc-status.oc-good{border-color:var(--oc-good);color:var(--oc-good)}
+.oc-status.oc-bad{border-color:var(--oc-bad);color:#ff9bb0}
+.oc-footer{margin-top:10px;text-align:right}
+
+.oc-receipts{list-style:none;margin:8px 0 0;padding:0;font:13px/1.45 ui-monospace,Menlo,Consolas,monospace;
+  max-height:190px;overflow:auto}
+.oc-receipts li{padding:6px 10px;border-left:3px solid var(--oc-line);margin-bottom:4px;background:rgba(255,255,255,.03);border-radius:0 8px 8px 0}
+.oc-receipts li.oc-ok{border-left-color:var(--oc-good)}
+.oc-receipts li.oc-fail{border-left-color:var(--oc-bad)}
+.oc-receipts li.oc-empty{color:var(--oc-dim)}
+
+@media (max-width:640px){
+  .oc-root{padding:12px;margin:12px auto;border-radius:14px}
+  .oc-root h2{font-size:21px}
+  .oc-controls{grid-template-columns:1fr}
+  .oc-primary{width:100%}
+}
+</style>
+</head>
+<body>
+
+<section class="oc-root" id="oc-root" aria-labelledby="oc-title">
+  <header class="oc-head">
+    <div>
+      <h2 id="oc-title">🏀 The Overcomplicator 🏰</h2>
+      <p class="oc-sub">Uploading a file used to take one click. We fixed that.</p>
+    </div>
+    <button type="button" class="oc-btn oc-ghost oc-small" id="oc-mute" aria-pressed="false">🔊 Sound on</button>
+  </header>
+
+  <div class="oc-filebar">
+    <span id="oc-filelabel">No file loaded. Drag one onto an arena below, or</span>
+    <label class="oc-btn oc-small">Choose file<input type="file" id="oc-input" hidden></label>
+    <button type="button" class="oc-link" id="oc-practice">use a practice file</button>
+  </div>
+  <div class="oc-progress" id="oc-progress" hidden>
+    <div class="oc-barwrap"><div class="oc-bar" id="oc-bar"></div></div>
+    <span id="oc-progtext"></span>
+  </div>
+
+  <div class="oc-tabs" role="tablist" aria-label="Pick your needlessly complicated way to upload">
+    <button type="button" role="tab" class="oc-tab" id="oc-tab-bb" aria-selected="true" aria-controls="oc-panel-bb">🏀 File Basketball</button>
+    <button type="button" role="tab" class="oc-tab" id="oc-tab-ct" aria-selected="false" aria-controls="oc-panel-ct">🏰 File Catapult</button>
+  </div>
+
+  <!-- ============ BASKETBALL ============ -->
+  <div id="oc-panel-bb" role="tabpanel" aria-labelledby="oc-tab-bb">
+    <div class="oc-arena" id="oc-bb-wrap">
+      <canvas id="oc-bb" aria-label="Basketball court. Drag the file backwards and release to shoot it at the hoop."></canvas>
+    </div>
+    <div class="oc-hud">
+      <span class="oc-chip">Baskets<b id="oc-bb-made">0</b></span>
+      <span class="oc-chip">Attempts<b id="oc-bb-att">0</b></span>
+      <span class="oc-chip">Streak<b id="oc-bb-streak">0</b></span>
+      <span class="oc-chip">Best streak<b id="oc-bb-best">0</b></span>
+      <span class="oc-chip">Accuracy<b id="oc-bb-acc">–</b></span>
+    </div>
+    <label class="oc-check"><input type="checkbox" id="oc-chaos"> Chaos mode (the hoop moves, because why not)</label>
+    <p class="oc-help">Grab the file, drag it <b>backwards</b> like a slingshot (the dotted line previews your shot), then let go. Sink it and the file gets uploaded. Miss and it crawls back to you.</p>
+  </div>
+
+  <!-- ============ CATAPULT ============ -->
+  <div id="oc-panel-ct" role="tabpanel" aria-labelledby="oc-tab-ct" hidden>
+    <div class="oc-arena" id="oc-ct-wrap">
+      <canvas id="oc-ct" aria-label="Medieval catapult scene. Set the angle and power, then fire the file at the target."></canvas>
+    </div>
+    <div class="oc-controls">
+      <label class="oc-ctl"><span>Launch angle<output id="oc-angle-out">45°</output></span>
+        <input type="range" id="oc-angle" min="15" max="80" value="45"></label>
+      <label class="oc-ctl"><span>Launch power<output id="oc-power-out">60%</output></span>
+        <input type="range" id="oc-power" min="10" max="100" value="60"></label>
+      <button type="button" class="oc-btn oc-primary" id="oc-fire">🔥 FIRE!</button>
+    </div>
+    <div class="oc-hud">
+      <span class="oc-chip">Shots<b id="oc-ct-att">0</b></span>
+      <span class="oc-chip">Hits<b id="oc-ct-hits">0</b></span>
+      <span class="oc-chip">Bullseyes<b id="oc-ct-bulls">0</b></span>
+      <span class="oc-chip">Points<b id="oc-ct-pts">0</b></span>
+    </div>
+    <label class="oc-check"><input type="checkbox" id="oc-guide"> Coward mode (show the trajectory)</label>
+    <p class="oc-help">Mind the wind and the moat. Hit the target to upload. Miss and... well, you'll see.</p>
+  </div>
+
+  <p class="oc-status" id="oc-status" role="status" aria-live="polite">Drop a file onto an arena to begin.</p>
+  <div class="oc-footer">
+    <button type="button" class="oc-link" id="oc-boring">😔 I give up. Just give me the boring upload button.</button>
+  </div>
+
+  <h3 class="oc-h3">Upload receipts (the official record of your suffering)</h3>
+  <ol class="oc-receipts" id="oc-receipts">
+    <li class="oc-empty" id="oc-noreceipts">Nothing uploaded yet. Your files remain free.</li>
+  </ol>
+</section>
+
+<script>
+(function(){
+'use strict';
+
+/* ================= CONFIG ================= */
+const CONFIG = {
+  uploadUrl: '',        // e.g. '/api/upload'. Leave blank for demo mode (nothing leaves the browser).
+  fieldName: 'file',    // multipart field name your server expects
+  headers: {}           // extra request headers, e.g. { 'X-CSRF-Token': '...' }
+};
+
+/* ================= HELPERS ================= */
+const root = document.getElementById('oc-root');
+const $ = function(s){ return root.querySelector(s); };
+const CW = 800, CH = 450;
+const EMOJI = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+const rand = function(a,b){ return a + Math.random()*(b-a); };
+const pick = function(a){ return a[Math.floor(Math.random()*a.length)]; };
+const clamp = function(v,a,b){ return Math.max(a,Math.min(b,v)); };
+const lerp = function(a,b,t){ return a + (b-a)*t; };
+const easeInOut = function(u){ return u<0.5 ? 2*u*u : 1-Math.pow(-2*u+2,2)/2; };
+
+function rr(c,x,y,w,h,r){
+  c.beginPath(); c.moveTo(x+r,y);
+  c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r);
+  c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath();
+}
+function setupCanvas(cv){
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  cv.width = CW*dpr; cv.height = CH*dpr;
+  const c = cv.getContext('2d');
+  c.setTransform(dpr,0,0,dpr,0,0);
+  return c;
+}
+function extOf(n){
+  const i = n.lastIndexOf('.');
+  if(i <= 0 || i === n.length-1) return 'FILE';
+  return n.slice(i+1, i+5).toUpperCase();
+}
+function hueOf(s){ let h=0; for(let i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))%360; return h; }
+function fmtSize(n){
+  if(n < 1024) return n+' B';
+  if(n < 1048576) return (n/1024).toFixed(1)+' KB';
+  return (n/1048576).toFixed(1)+' MB';
+}
+
+/* The star of the show: a tiny document sprite */
+function drawFileSprite(c,x,y,s,rot,name,scale){
+  const w = s*0.95, h = s*1.2, f = s*0.34;
+  c.save(); c.translate(x,y); c.rotate(rot||0); c.scale(scale,scale);
+  c.shadowColor = 'rgba(0,0,0,.35)'; c.shadowBlur = 6; c.shadowOffsetY = 2;
+  c.beginPath();
+  c.moveTo(-w/2,-h/2); c.lineTo(w/2-f,-h/2); c.lineTo(w/2,-h/2+f);
+  c.lineTo(w/2,h/2); c.lineTo(-w/2,h/2); c.closePath();
+  c.fillStyle = '#fdfcf7'; c.fill();
+  c.shadowColor = 'transparent';
+  c.lineWidth = 2; c.strokeStyle = '#2b2d42'; c.lineJoin = 'round'; c.stroke();
+  c.beginPath(); c.moveTo(w/2-f,-h/2); c.lineTo(w/2-f,-h/2+f); c.lineTo(w/2,-h/2+f); c.closePath();
+  c.fillStyle = '#d9d6c8'; c.fill(); c.stroke();
+  c.strokeStyle = '#c4c0ad'; c.lineWidth = 2;
+  for(let i=0;i<2;i++){ c.beginPath(); c.moveTo(-w/2+5,-h/2+7+i*6); c.lineTo(w/2-f-4,-h/2+7+i*6); c.stroke(); }
+  c.fillStyle = 'hsl('+hueOf(name)+',65%,46%)';
+  c.fillRect(-w/2+3,h/2-s*0.44,w-6,s*0.34);
+  c.fillStyle = '#fff'; c.font = '800 '+Math.round(s*0.25)+'px system-ui,sans-serif';
+  c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillText(extOf(name),0,h/2-s*0.27);
+  c.restore();
+}
+function dropOverlay(c,title,sub){
+  c.save();
+  c.fillStyle = 'rgba(8,10,18,.68)'; c.fillRect(0,0,CW,CH);
+  c.setLineDash([12,10]); c.lineWidth = 3; c.strokeStyle = 'rgba(255,255,255,.55)';
+  rr(c,28,28,CW-56,CH-56,18); c.stroke(); c.setLineDash([]);
+  c.fillStyle = '#fff'; c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.font = '800 34px system-ui,sans-serif'; c.fillText(title,CW/2,CH/2-14);
+  c.font = '500 17px system-ui,sans-serif'; c.fillStyle = 'rgba(255,255,255,.8)'; c.fillText(sub,CW/2,CH/2+26);
+  c.restore();
+}
+
+/* Particles (confetti, splashes) */
+function makeParticles(){
+  const list = [];
+  return {
+    burst: function(x,y,n,o){
+      o = o || {};
+      const colors = o.colors || ['#ffd166','#ef476f','#06d6a0','#118ab2','#ffffff'];
+      for(let i=0;i<n;i++){
+        const a = o.angle !== undefined ? o.angle + rand(-(o.spread||0.5),(o.spread||0.5)) : rand(0,Math.PI*2);
+        const sp = rand(o.min||80, o.max||320);
+        list.push({x:x,y:y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,life:0,max:rand(0.6,1.4)*(o.life||1),
+          c:pick(colors),s:rand(3,7),g:o.g===undefined?900:o.g,rot:rand(0,6),vr:rand(-8,8),shape:o.shape||'rect'});
+      }
+    },
+    update: function(dt){
+      for(let i=list.length-1;i>=0;i--){
+        const p = list[i]; p.life += dt;
+        if(p.life >= p.max){ list.splice(i,1); continue; }
+        p.vy += p.g*dt; p.x += p.vx*dt; p.y += p.vy*dt; p.rot += p.vr*dt;
+      }
+    },
+    draw: function(c){
+      for(const p of list){
+        c.save(); c.globalAlpha = Math.max(0,1-p.life/p.max);
+        c.translate(p.x,p.y); c.rotate(p.rot); c.fillStyle = p.c;
+        if(p.shape === 'circle'){ c.beginPath(); c.arc(0,0,p.s*0.6,0,6.3); c.fill(); }
+        else c.fillRect(-p.s/2,-p.s/3,p.s,p.s*0.66);
+        c.restore();
+      }
+    },
+    clear: function(){ list.length = 0; }
+  };
+}
+
+/* Floating text, one-shot emoji animations, ripples and a tiny timer queue */
+function makeFx(){
+  const items = [], timers = [];
+  return {
+    later: function(sec,fn){ timers.push({t:sec,fn:fn}); },
+    text: function(str,x,y,o){
+      o = o || {};
+      items.push({kind:'text',str:str,x:x,y:y,t:0,life:o.life||1.5,color:o.color||'#fff',size:o.size||24,
+        rise:o.rise===undefined?46:o.rise});
+    },
+    emoji: function(o){
+      items.push(Object.assign({kind:'emoji',t:0,wait:0,dur:1,dx:0,dy:0,hop:0,spin:0,size:40,flip:false,linger:0,showWait:false},o));
+    },
+    ripple: function(x,y,color){ items.push({kind:'ring',x:x,y:y,t:0,life:0.9,color:color||'#d6f2ff'}); },
+    update: function(dt){
+      for(const tm of timers) tm.t -= dt;
+      const due = timers.filter(function(tm){ return tm.t <= 0; });
+      if(due.length){
+        for(const d of due) timers.splice(timers.indexOf(d),1);
+        due.forEach(function(d){ d.fn(); });
+      }
+      for(let i=items.length-1;i>=0;i--){
+        const it = items[i]; it.t += dt;
+        const life = it.kind === 'emoji' ? it.wait+it.dur+it.linger : it.life;
+        if(it.t >= life) items.splice(i,1);
+      }
+    },
+    draw: function(c){
+      for(const it of items){
+        if(it.kind === 'text'){
+          const u = it.t/it.life;
+          c.save(); c.globalAlpha = Math.max(0,1-u*u);
+          c.font = '800 '+it.size+'px system-ui,sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+          c.lineWidth = 5; c.lineJoin = 'round'; c.strokeStyle = 'rgba(10,10,20,.85)';
+          const y = it.y - it.rise*Math.min(1,u*1.6);
+          c.strokeText(it.str,it.x,y); c.fillStyle = it.color; c.fillText(it.str,it.x,y);
+          c.restore();
+        } else if(it.kind === 'emoji'){
+          if(it.t < it.wait && !it.showWait) continue;
+          const u = clamp((it.t-it.wait)/it.dur,0,1);
+          const x = it.x+it.dx*u, y = it.y+it.dy*u-4*it.hop*u*(1-u);
+          c.save(); c.translate(x,y); c.rotate(it.spin*u); if(it.flip) c.scale(-1,1);
+          c.font = it.size+'px '+EMOJI; c.textAlign = 'center'; c.textBaseline = 'middle';
+          c.fillText(it.e,0,0); c.restore();
+        } else {
+          const u = it.t/it.life;
+          c.save(); c.globalAlpha = 1-u; c.strokeStyle = it.color; c.lineWidth = 3;
+          c.beginPath(); c.ellipse(it.x,it.y,10+u*60,3+u*10,0,0,6.3); c.stroke(); c.restore();
+        }
+      }
+    },
+    clear: function(){ items.length = 0; timers.length = 0; }
+  };
+}
+
+/* ================= SOUND (all synthesized, no audio files) ================= */
+const Sound = (function(){
+  let ctx = null, master = null, muted = false;
+  const lastPlayed = {};
+  function ensure(){
+    if(!ctx){
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if(!AC) return null;
+      ctx = new AC();
+      master = ctx.createGain(); master.gain.value = 0.5; master.connect(ctx.destination);
+    }
+    if(ctx.state === 'suspended') ctx.resume();
+    return ctx;
+  }
+  function tone(o){
+    if(muted) return;
+    const a = ensure(); if(!a) return;
+    const f = o.f||440, dur = o.dur||0.2, vol = o.vol||0.3, t = a.currentTime+(o.delay||0);
+    const osc = a.createOscillator(), g = a.createGain();
+    osc.type = o.type||'sine';
+    osc.frequency.setValueAtTime(f,t);
+    if(o.to) osc.frequency.exponentialRampToValueAtTime(Math.max(1,o.to),t+dur);
+    g.gain.setValueAtTime(0.0001,t);
+    g.gain.exponentialRampToValueAtTime(vol,t+0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+    osc.connect(g); g.connect(master);
+    osc.start(t); osc.stop(t+dur+0.05);
+  }
+  function noise(o){
+    if(muted) return;
+    const a = ensure(); if(!a) return;
+    const dur = o.dur||0.3, vol = o.vol||0.3, t = a.currentTime+(o.delay||0);
+    const len = Math.max(1,Math.floor(a.sampleRate*dur));
+    const buf = a.createBuffer(1,len,a.sampleRate), d = buf.getChannelData(0);
+    for(let i=0;i<len;i++) d[i] = Math.random()*2-1;
+    const src = a.createBufferSource(); src.buffer = buf;
+    const flt = a.createBiquadFilter(); flt.type = o.type||'lowpass'; flt.Q.value = o.q||1;
+    flt.frequency.setValueAtTime(o.f||1000,t);
+    if(o.to) flt.frequency.exponentialRampToValueAtTime(Math.max(20,o.to),t+dur);
+    const g = a.createGain();
+    g.gain.setValueAtTime(0.0001,t);
+    g.gain.exponentialRampToValueAtTime(vol,t+Math.min(0.03,dur/3));
+    g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+    src.connect(flt); flt.connect(g); g.connect(master);
+    src.start(t);
+  }
+  const lib = {
+    pick:   function(){ tone({f:520,to:780,dur:0.12,type:'triangle',vol:0.2}); },
+    whoosh: function(){ noise({dur:0.5,vol:0.35,type:'bandpass',f:400,to:2400,q:0.8}); },
+    thud:   function(v){ tone({f:140,to:50,dur:0.18,type:'sine',vol:0.45*(v||1)}); },
+    clang:  function(){ tone({f:620,dur:0.35,type:'triangle',vol:0.25}); tone({f:931,dur:0.3,type:'triangle',vol:0.18}); tone({f:1480,dur:0.2,type:'sine',vol:0.1}); },
+    board:  function(){ tone({f:200,to:120,dur:0.12,type:'square',vol:0.18}); noise({dur:0.08,vol:0.2,type:'lowpass',f:900}); },
+    swish:  function(){ noise({dur:0.45,vol:0.4,type:'highpass',f:2500,to:6000,q:0.5}); },
+    cheer:  function(){
+      [523,659,784,1047].forEach(function(f,i){ tone({f:f,dur:0.18,type:'square',vol:0.13,delay:i*0.09}); });
+      noise({dur:0.9,vol:0.25,type:'bandpass',f:1500,q:0.4,delay:0.1});
+    },
+    sad:    function(){
+      [[233,0],[220,0.28],[208,0.56]].forEach(function(p){ tone({f:p[0],dur:0.27,type:'sawtooth',vol:0.12,delay:p[1]}); });
+      tone({f:196,to:150,dur:0.6,type:'sawtooth',vol:0.12,delay:0.84});
+    },
+    creak:  function(){ tone({f:90,to:230,dur:0.55,type:'sawtooth',vol:0.09}); tone({f:130,to:70,dur:0.4,type:'square',vol:0.05,delay:0.25}); },
+    twang:  function(){ tone({f:320,to:70,dur:0.4,type:'square',vol:0.2}); noise({dur:0.25,vol:0.25,type:'bandpass',f:900,to:300}); },
+    splash: function(){ noise({dur:0.7,vol:0.4,type:'lowpass',f:3200,to:250}); },
+    boing:  function(){ tone({f:200,to:700,dur:0.22,type:'sine',vol:0.3}); tone({f:700,to:250,dur:0.25,type:'sine',vol:0.25,delay:0.2}); },
+    burp:   function(){ tone({f:120,to:55,dur:0.5,type:'sawtooth',vol:0.22}); noise({dur:0.4,vol:0.2,type:'lowpass',f:420}); },
+    poof:   function(){ noise({dur:0.3,vol:0.3,type:'lowpass',f:1800,to:300}); }
+  };
+  return {
+    play: function(name,arg){
+      const now = performance.now();
+      if(lastPlayed[name] && now-lastPlayed[name] < 80) return;
+      lastPlayed[name] = now;
+      try{ if(lib[name]) lib[name](arg); }catch(e){}
+    },
+    setMuted: function(m){ muted = m; },
+    isMuted: function(){ return muted; },
+    unlock: ensure
+  };
+})();
+
+/* ================= SHARED STATE + UPLOAD ================= */
+const state = { file:null, uploading:false };
+const ui = {
+  fileLabel:$('#oc-filelabel'), status:$('#oc-status'), progress:$('#oc-progress'),
+  bar:$('#oc-bar'), progText:$('#oc-progtext'), receipts:$('#oc-receipts'),
+  noReceipts:$('#oc-noreceipts'), input:$('#oc-input')
+};
+let BB, CT; // arenas, assigned below
+
+function say(msg,tone){ ui.status.textContent = msg; ui.status.className = 'oc-status'+(tone?' oc-'+tone:''); }
+function refreshFileLabel(){
+  ui.fileLabel.textContent = state.file
+    ? 'Loaded: '+state.file.name+' ('+fmtSize(state.file.size)+')'
+    : 'No file loaded. Drag one onto an arena below, or';
+}
+function isBusy(){ return state.uploading || (BB && BB.busy()) || (CT && CT.busy()); }
+function setFile(f){
+  if(isBusy()){ say('Hold on, the previous file is still mid-adventure.','bad'); return; }
+  state.file = f; refreshFileLabel(); Sound.play('pick');
+  say('Loaded "'+f.name+'". Now earn the right to upload it.');
+}
+function wireDrop(el){
+  el.addEventListener('dragover',function(e){ e.preventDefault(); el.classList.add('oc-drag'); });
+  el.addEventListener('dragleave',function(){ el.classList.remove('oc-drag'); });
+  el.addEventListener('drop',function(e){
+    e.preventDefault(); el.classList.remove('oc-drag');
+    const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if(f) setFile(f);
+  });
+}
+ui.input.addEventListener('change',function(){
+  const f = ui.input.files && ui.input.files[0];
+  if(f) setFile(f);
+  ui.input.value = '';
+});
+$('#oc-practice').addEventListener('click',function(){
+  setFile(new File(['This is a practice file. It has seen things.'],'practice-file.txt',{type:'text/plain'}));
+});
+
+function showProgress(p,text){ ui.progress.hidden = false; ui.bar.style.width = Math.round(p*100)+'%'; ui.progText.textContent = text; }
+function hideProgress(){ ui.progress.hidden = true; }
+function xhrUpload(file,onProgress){
+  return new Promise(function(resolve,reject){
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST',CONFIG.uploadUrl);
+    for(const k in CONFIG.headers) xhr.setRequestHeader(k,CONFIG.headers[k]);
+    xhr.upload.onprogress = function(e){ if(e.lengthComputable) onProgress(e.loaded/e.total); };
+    xhr.onload = function(){ (xhr.status>=200 && xhr.status<300) ? resolve() : reject(new Error('Server said '+xhr.status)); };
+    xhr.onerror = function(){ reject(new Error('Network error')); };
+    const fd = new FormData(); fd.append(CONFIG.fieldName,file,file.name);
+    xhr.send(fd);
+  });
+}
+function fakeUpload(onProgress){
+  return new Promise(function(resolve){
+    const t0 = performance.now(), dur = 1400;
+    (function tick(){
+      const u = Math.min(1,(performance.now()-t0)/dur);
+      onProgress(u);
+      if(u < 1) setTimeout(tick,60); else resolve();
+    })();
+  });
+}
+function addReceipt(file,via,ok,detail){
+  if(ui.noReceipts) ui.noReceipts.hidden = true;
+  const li = document.createElement('li');
+  li.className = ok ? 'oc-ok' : 'oc-fail';
+  const time = new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  const verdict = ok ? (CONFIG.uploadUrl ? 'uploaded' : '"uploaded" (demo mode, nothing left your browser)') : 'FAILED: '+detail;
+  li.textContent = time+'  '+file.name+' ('+fmtSize(file.size)+') via '+via+': '+verdict;
+  ui.receipts.insertBefore(li,ui.receipts.firstChild);
+}
+async function uploadFile(file,via){
+  state.uploading = true;
+  showProgress(0,'Uploading '+file.name+'…');
+  let ok = true, detail = '';
+  try{
+    if(CONFIG.uploadUrl){
+      await xhrUpload(file,function(p){ showProgress(p,'Uploading '+file.name+'… '+Math.round(p*100)+'%'); });
+    } else {
+      await fakeUpload(function(p){ showProgress(p,'"Uploading" '+file.name+'… '+Math.round(p*100)+'%'); });
+    }
+  }catch(err){ ok = false; detail = (err && err.message) || String(err); }
+  state.uploading = false;
+  showProgress(ok?1:0, ok?'Done.':'Failed.');
+  setTimeout(hideProgress,1000);
+  addReceipt(file,via,ok,detail);
+  if(ok){ state.file = null; refreshFileLabel(); }
+  root.dispatchEvent(new CustomEvent('overcomplicator:upload',{bubbles:true,detail:{file:file,via:via,ok:ok,error:detail}}));
+  return ok;
+}
+
+/* ================= ARENA 1: FILE BASKETBALL ================= */
+BB = (function(){
+  const cv = $('#oc-bb'), c = setupCanvas(cv), wrap = $('#oc-bb-wrap');
+  const el = {made:$('#oc-bb-made'),att:$('#oc-bb-att'),streak:$('#oc-bb-streak'),best:$('#oc-bb-best'),acc:$('#oc-bb-acc')};
+  const FLOOR = 400, R = 17, G = 1500, MAXDRAG = 150, VMAX = 1250, K = VMAX/MAXDRAG;
+  const START = {x:105,y:338};
+  const hoop = {frontX:612,backX:716,boardX:730,boardTop:104,boardBot:262,baseY:240,offY:0,t:0};
+  const SLOT_X = (hoop.frontX+hoop.backX)/2;
+  const stats = {made:0,att:0,streak:0,best:0};
+  const fx = makeFx(), parts = makeParticles();
+  const ball = {x:START.x,y:START.y,vx:0,vy:0,rot:0,vr:0,scale:1,scored:false,file:null,age:0};
+  let held = {dx:0,dy:0,len:0,power:0};
+  let mode = 'idle'; // idle | aiming | flying | sinking | uploading | returning
+  let chaos = false, clock = 0, netSway = 0, mood = 'idle', moodT = 0, sinkT = 0, ret = null;
+  const crowd = Array.from({length:15},function(_,i){
+    return {x:30+i*52+rand(-8,8),y:48+(i%3)*16+rand(-4,4),ph:rand(0,6.3),e:pick(['🙂','😀','😎','🧐','😮','🤓','🥳','😁'])};
+  });
+  const MISS_LINES = [
+    'Brick. The file is back at the start, and so is your confidence.',
+    'Airball! The crowd pretends not to know you.',
+    'The rim said no. The backboard said "also no".',
+    'That shot had commitment. Wrong direction, but commitment.',
+    'The file bounced back, disappointed but supportive.',
+    'A for effort. Also a D for aim.'
+  ];
+
+  wrap.addEventListener('dragover',function(){}); wireDrop(wrap);
+  $('#oc-chaos').addEventListener('change',function(e){
+    chaos = e.target.checked;
+    say(chaos ? 'Chaos mode on. The hoop has started moving. Nobody asked it to.' : 'The hoop calms down.');
+  });
+
+  function updateHud(){
+    el.made.textContent = stats.made; el.att.textContent = stats.att;
+    el.streak.textContent = stats.streak; el.best.textContent = stats.best;
+    el.acc.textContent = stats.att ? Math.round(stats.made/stats.att*100)+'%' : '–';
+  }
+
+  /* ---- input ---- */
+  function toLocal(e){
+    const r = cv.getBoundingClientRect();
+    return {x:(e.clientX-r.left)*CW/r.width, y:(e.clientY-r.top)*CH/r.height};
+  }
+  function aimTo(p){
+    let dx = START.x-p.x, dy = START.y-p.y;
+    const len = Math.hypot(dx,dy);
+    if(len > MAXDRAG){ dx *= MAXDRAG/len; dy *= MAXDRAG/len; }
+    const l = Math.min(len,MAXDRAG);
+    held = {dx:dx,dy:dy,len:l,power:l/MAXDRAG};
+    ball.x = START.x-dx*0.2; ball.y = START.y-dy*0.2;
+  }
+  cv.addEventListener('pointerdown',function(e){
+    Sound.unlock();
+    if(!state.file){ say('Drop a file on the court first. The basketball is not going to be a file by itself.','bad'); return; }
+    if(mode !== 'idle' || state.uploading) return;
+    const p = toLocal(e);
+    if(Math.hypot(p.x-START.x,p.y-START.y) < 50){
+      mode = 'aiming'; try{ cv.setPointerCapture(e.pointerId); }catch(_){}
+      aimTo(p); e.preventDefault(); Sound.play('pick');
+    }
+  });
+  cv.addEventListener('pointermove',function(e){
+    const p = toLocal(e);
+    if(mode === 'aiming'){ aimTo(p); cv.style.cursor = 'grabbing'; }
+    else cv.style.cursor = (state.file && mode === 'idle' && Math.hypot(p.x-START.x,p.y-START.y) < 50) ? 'grab' : 'default';
+  });
+  function cancelAim(){ mode = 'idle'; ball.x = START.x; ball.y = START.y; }
+  cv.addEventListener('pointerup',function(e){
+    if(mode !== 'aiming') return;
+    try{ cv.releasePointerCapture(e.pointerId); }catch(_){}
+    if(held.len < 18){ cancelAim(); say('Too gentle. That is not a shot, that is a nudge. Pull back further.'); return; }
+    shoot();
+  });
+  cv.addEventListener('pointercancel',function(){ if(mode === 'aiming') cancelAim(); });
+
+  function shoot(){
+    ball.vx = held.dx*K; ball.vy = held.dy*K;
+    ball.vr = ball.vx*0.01; ball.scored = false; ball.scale = 1; ball.age = 0;
+    ball.file = state.file;
+    stats.att++; mode = 'flying'; updateHud();
+    Sound.play('whoosh'); say('Shot away…');
+  }
+
+  /* ---- physics ---- */
+  function collide(b,cx,cy){
+    const rr2 = 3.5, dx = b.x-cx, dy = b.y-cy, d = Math.hypot(dx,dy), min = R+rr2;
+    if(d < min && d > 0.0001){
+      const nx = dx/d, ny = dy/d;
+      b.x = cx+nx*min; b.y = cy+ny*min;
+      const vn = b.vx*nx+b.vy*ny;
+      if(vn < 0){
+        b.vx -= 1.55*vn*nx; b.vy -= 1.55*vn*ny;
+        b.vr += (Math.random()-0.5)*6;
+        if(-vn > 120) Sound.play('clang');
+      }
+    }
+  }
+  function physics(dt){
+    const b = ball, py = b.y;
+    b.vy += G*dt;
+    if(b.scored){ b.vx += (SLOT_X-b.x)*14*dt; b.vx *= Math.exp(-3*dt); }
+    b.x += b.vx*dt; b.y += b.vy*dt; b.rot += b.vr*dt;
+    const rimY = hoop.baseY+hoop.offY;
+    if(!b.scored){
+      if(b.vy > 0 && py < rimY && b.y >= rimY && b.x > hoop.frontX+2 && b.x < hoop.backX-2){ score(); return; }
+      collide(b,hoop.frontX,rimY); collide(b,hoop.backX,rimY);
+      const bt = hoop.boardTop+hoop.offY, bm = hoop.boardBot+hoop.offY;
+      if(b.vx > 0 && b.x+R > hoop.boardX && b.x-R < hoop.boardX+10 && b.y > bt && b.y < bm){
+        b.x = hoop.boardX-R; b.vx = -b.vx*0.6; b.vr *= -0.5; Sound.play('board');
+      }
+    } else if(b.y > rimY && b.y < rimY+50){
+      b.vy *= Math.exp(-2.5*dt);
+    }
+    if(b.y+R > FLOOR){
+      b.y = FLOOR-R;
+      if(b.scored){ mode = 'sinking'; sinkT = 0; return; }
+      if(Math.abs(b.vy) > 90){ b.vy = -b.vy*0.58; Sound.play('thud',clamp(Math.abs(b.vy)/500,0.3,1)); } else b.vy = 0;
+      b.vx *= Math.exp(-2.2*dt); b.vr = b.vx/R;
+    }
+    if(b.x-R < 0){ b.x = R; b.vx = Math.abs(b.vx)*0.6; }
+  }
+  function score(){
+    const b = ball, rimY = hoop.baseY+hoop.offY;
+    b.scored = true; netSway = 1;
+    stats.made++; stats.streak++; stats.best = Math.max(stats.best,stats.streak); updateHud();
+    Sound.play('swish'); fx.later(0.25,function(){ Sound.play('cheer'); });
+    mood = 'cheer'; moodT = 2.4;
+    parts.burst(SLOT_X,rimY+20,30,{min:120,max:420,life:1.1});
+    fx.text(pick(['SWISH!','NOTHING BUT NET!',"CHEF'S KISS!",'BUCKETS!']),clamp(SLOT_X-40,120,CW-140),rimY-80,{color:'#ffd166',size:30});
+    say('Basket! Now sucking "'+(b.file?b.file.name:'your file')+'" into the upload slot…','good');
+  }
+  function miss(){
+    stats.streak = 0; updateHud();
+    mood = 'groan'; moodT = 1.7; Sound.play('sad');
+    say(pick(MISS_LINES),'bad');
+    fx.text(pick(['MISS!','AIRBALL!','BRICK!','NOPE!']),clamp(ball.x,90,CW-90),clamp(ball.y-40,90,340),{color:'#ff5c7a',size:30});
+    mode = 'returning'; ret = {t:0,dur:0.9,x0:ball.x,y0:ball.y};
+  }
+  function checkEnd(){
+    const b = ball;
+    if(b.scored) return;
+    const still = b.y >= FLOOR-R-1 && Math.abs(b.vy) < 5 && Math.abs(b.vx) < 30;
+    if(still || b.x > CW+70 || b.x < -70 || b.age > 7) miss();
+  }
+  function resetBall(){
+    ball.x = START.x; ball.y = START.y; ball.vx = ball.vy = 0; ball.rot = 0;
+    ball.scale = 0; ball.scored = false; ball.file = null;
+  }
+  function beginUpload(){
+    const f = ball.file;
+    mode = 'uploading';
+    uploadFile(f,'File Basketball').then(function(ok){
+      if(ok){
+        say('"'+f.name+'" has been uploaded. The hoop expects a thank-you note.','good');
+        parts.burst(SLOT_X,FLOOR-20,36,{angle:-Math.PI/2,spread:1.1,min:150,max:480,life:1.3});
+      } else say('The upload failed. The hoop is sorry.','bad');
+      resetBall(); mode = 'idle';
+    });
+  }
+
+  function update(dt){
+    clock += dt; hoop.t += dt;
+    const tgt = chaos ? Math.sin(hoop.t*1.7)*50 : 0;
+    hoop.offY += (tgt-hoop.offY)*Math.min(1,dt*5);
+    netSway = Math.max(0,netSway-dt*1.2);
+    fx.update(dt); parts.update(dt);
+    moodT -= dt; if(moodT <= 0) mood = 'idle';
+    if(mode === 'idle'){
+      ball.x = START.x; ball.y = START.y; ball.rot = 0;
+      ball.scale = Math.min(1,ball.scale+dt*4);
+    } else if(mode === 'flying'){
+      ball.age += dt;
+      for(let i=0;i<4 && mode==='flying';i++) physics(dt/4);
+      if(mode === 'flying') checkEnd();
+    } else if(mode === 'sinking'){
+      sinkT += dt; const u = Math.min(1,sinkT/0.5);
+      ball.scale = 1-u; ball.y = FLOOR-R+u*26; ball.x = lerp(ball.x,SLOT_X,0.2);
+      if(u >= 1) beginUpload();
+    } else if(mode === 'returning'){
+      ret.t += dt; const u = clamp(ret.t/ret.dur,0,1), e = easeInOut(u);
+      ball.x = lerp(ret.x0,START.x,e); ball.y = lerp(ret.y0,START.y,e)-Math.sin(u*Math.PI)*120;
+      ball.rot += dt*10;
+      if(u >= 1){ ball.rot = 0; Sound.play('thud'); mode = 'idle'; resetBall(); ball.scale = 1; ball.file = null; }
+    }
+  }
+
+  /* ---- drawing ---- */
+  function drawCourt(){
+    const g = c.createLinearGradient(0,0,0,FLOOR);
+    g.addColorStop(0,'#181b2b'); g.addColorStop(1,'#2a2f4a');
+    c.fillStyle = g; c.fillRect(0,0,CW,FLOOR);
+    c.fillStyle = '#0f111a'; c.fillRect(0,0,CW,100);
+    c.fillStyle = 'rgba(255,255,255,.05)';
+    for(let i=0;i<4;i++) c.fillRect(0,i*26+8,CW,2);
+    const f = c.createLinearGradient(0,FLOOR,0,CH);
+    f.addColorStop(0,'#cf8f50'); f.addColorStop(1,'#9f6430');
+    c.fillStyle = f; c.fillRect(0,FLOOR,CW,CH-FLOOR);
+    c.fillStyle = 'rgba(0,0,0,.12)';
+    for(let x=0;x<CW;x+=44) c.fillRect(x,FLOOR,2,CH-FLOOR);
+    c.fillStyle = 'rgba(190,60,60,.35)'; c.fillRect(560,FLOOR,240,CH-FLOOR);
+    c.fillStyle = '#f3e9d2'; c.fillRect(0,FLOOR,CW,3);
+  }
+  function drawCrowd(){
+    c.font = '26px '+EMOJI; c.textAlign = 'center'; c.textBaseline = 'middle';
+    for(const m of crowd){
+      let bounce = Math.sin(clock*1.5+m.ph)*2, face = m.e;
+      if(mood === 'cheer'){ bounce = -Math.abs(Math.sin(clock*9+m.ph))*14; face = '🤩'; }
+      else if(mood === 'groan'){ bounce = 3; face = '😬'; }
+      c.fillText(face,m.x,m.y+bounce);
+    }
+  }
+  function drawBoardAndPole(){
+    const oy = hoop.offY;
+    c.fillStyle = '#4b5068';
+    c.fillRect(752,hoop.boardBot+oy-10,10,FLOOR-(hoop.boardBot+oy)+10);
+    c.fillStyle = 'rgba(235,240,255,.93)';
+    rr(c,hoop.boardX,hoop.boardTop+oy,10,hoop.boardBot-hoop.boardTop,3); c.fill();
+    c.fillStyle = 'rgba(255,92,122,.75)';
+    c.fillRect(hoop.boardX,hoop.baseY+oy-34,10,34);
+  }
+  function drawSlot(){
+    const glow = (mode === 'sinking' || mode === 'uploading') ? 0.5+0.5*Math.sin(clock*10) : 0.15;
+    c.save();
+    c.fillStyle = 'rgba(61,220,151,'+(0.2+glow*0.5)+')';
+    c.beginPath(); c.ellipse(SLOT_X,FLOOR+6,48,10,0,0,6.3); c.fill();
+    c.fillStyle = '#0a0b11'; c.beginPath(); c.ellipse(SLOT_X,FLOOR+6,36,6,0,0,6.3); c.fill();
+    c.fillStyle = 'rgba(255,255,255,.85)'; c.font = '800 12px system-ui,sans-serif'; c.textAlign = 'center';
+    c.fillText('▼ UPLOAD SLOT ▼',SLOT_X,FLOOR+30);
+    c.restore();
+  }
+  function drawBall(){
+    const f = ball.file || state.file;
+    if(!f){
+      c.save(); c.setLineDash([6,6]); c.strokeStyle = 'rgba(255,255,255,.5)'; c.lineWidth = 2;
+      c.beginPath(); c.arc(START.x,START.y,24,0,6.3); c.stroke(); c.restore();
+      return;
+    }
+    if(mode === 'idle'){
+      c.save(); c.setLineDash([7,7]); c.lineDashOffset = -clock*16; c.strokeStyle = 'rgba(255,209,102,.8)'; c.lineWidth = 2.5;
+      c.beginPath(); c.arc(START.x,START.y,34,0,6.3); c.stroke(); c.restore();
+      c.fillStyle = 'rgba(255,255,255,.75)'; c.font = '700 12px system-ui,sans-serif'; c.textAlign = 'center';
+      c.fillText('DRAG BACK & RELEASE',START.x,START.y-48);
+    }
+    if(ball.scale <= 0.02) return;
+    const sh = clamp(1-(FLOOR-ball.y)/380,0.2,1);
+    c.fillStyle = 'rgba(0,0,0,'+(0.28*sh)+')';
+    c.beginPath(); c.ellipse(ball.x,FLOOR+4,R*1.2*sh*ball.scale,4*sh,0,0,6.3); c.fill();
+    const bob = mode === 'idle' ? Math.sin(clock*3)*2 : 0;
+    drawFileSprite(c,ball.x,ball.y+bob,34,ball.rot,f.name,ball.scale);
+  }
+  function drawNetAndRim(){
+    const ry = hoop.baseY+hoop.offY, sw = Math.sin(clock*22)*7*netSway, nh = 48;
+    const t0 = hoop.frontX, t1 = hoop.backX, b0 = hoop.frontX+22+sw, b1 = hoop.backX-22+sw;
+    c.save();
+    c.strokeStyle = 'rgba(255,255,255,.75)'; c.lineWidth = 1.5;
+    for(let i=0;i<=6;i++){
+      const u = i/6; c.beginPath(); c.moveTo(lerp(t0,t1,u),ry); c.lineTo(lerp(b0,b1,u),ry+nh); c.stroke();
+    }
+    for(let k=1;k<=3;k++){
+      const v = k/4, y = ry+nh*v;
+      c.beginPath(); c.moveTo(lerp(t0,b0,v),y); c.lineTo(lerp(t1,b1,v),y); c.stroke();
+    }
+    c.lineCap = 'round';
+    c.strokeStyle = '#ff6b2c'; c.lineWidth = 4;
+    c.beginPath(); c.moveTo(hoop.backX,ry); c.lineTo(hoop.boardX,ry-2); c.stroke();
+    c.lineWidth = 5; c.beginPath(); c.moveTo(hoop.frontX,ry); c.lineTo(hoop.backX,ry); c.stroke();
+    c.fillStyle = '#ffb08a';
+    c.beginPath(); c.arc(hoop.frontX,ry,3.5,0,6.3); c.fill();
+    c.beginPath(); c.arc(hoop.backX,ry,3.5,0,6.3); c.fill();
+    c.restore();
+  }
+  function drawAim(){
+    if(mode !== 'aiming') return;
+    const hx = START.x-held.dx, hy = START.y-held.dy;
+    c.save();
+    c.strokeStyle = 'rgba(255,209,102,.6)'; c.lineWidth = 3; c.setLineDash([6,6]);
+    c.beginPath(); c.moveTo(START.x,START.y); c.lineTo(hx,hy); c.stroke(); c.setLineDash([]);
+    c.fillStyle = '#ffd166'; c.beginPath(); c.arc(hx,hy,6,0,6.3); c.fill();
+    const vx = held.dx*K, vy = held.dy*K;
+    for(let i=1;i<=16;i++){
+      const t = i*0.05, x = ball.x+vx*t, y = ball.y+vy*t+0.5*G*t*t;
+      c.globalAlpha = 1-i/20; c.fillStyle = '#fff';
+      c.beginPath(); c.arc(x,y,3.2,0,6.3); c.fill();
+    }
+    c.globalAlpha = 1;
+    const gx = 20, gy = CH-30, gw = 220;
+    c.fillStyle = 'rgba(0,0,0,.55)'; rr(c,gx,gy,gw,14,7); c.fill();
+    const grad = c.createLinearGradient(gx,0,gx+gw,0);
+    grad.addColorStop(0,'#3ddc97'); grad.addColorStop(0.6,'#ffd166'); grad.addColorStop(1,'#ff5c7a');
+    c.fillStyle = grad; rr(c,gx,gy,Math.max(8,gw*held.power),14,7); c.fill();
+    const ang = Math.round(Math.atan2(-held.dy,held.dx)*180/Math.PI);
+    c.fillStyle = '#fff'; c.font = '800 13px system-ui,sans-serif'; c.textAlign = 'left';
+    c.fillText('POWER '+Math.round(held.power*100)+'%   ANGLE '+ang+'°',gx,gy-8);
+    c.restore();
+  }
+  function draw(){
+    c.clearRect(0,0,CW,CH);
+    drawCourt(); drawCrowd(); drawBoardAndPole(); drawSlot();
+    drawBall(); drawNetAndRim();
+    parts.draw(c); fx.draw(c); drawAim();
+    if(!state.file && mode === 'idle') dropOverlay(c,'Drop a file on the court','(or use the Choose file button above)');
+  }
+
+  updateHud();
+  return {update:update,draw:draw,busy:function(){ return mode !== 'idle'; }};
+})();
+
+/* ================= ARENA 2: FILE CATAPULT ================= */
+CT = (function(){
+  const cv = $('#oc-ct'), c = setupCanvas(cv), wrap = $('#oc-ct-wrap');
+  const angleIn = $('#oc-angle'), powerIn = $('#oc-power'), angleOut = $('#oc-angle-out'), powerOut = $('#oc-power-out');
+  const fireBtn = $('#oc-fire'), guideCb = $('#oc-guide');
+  const el = {att:$('#oc-ct-att'),hits:$('#oc-ct-hits'),bulls:$('#oc-ct-bulls'),pts:$('#oc-ct-pts')};
+  const GROUND = 380, PIVOT = {x:116,y:322}, ARM = 94, G = 900, VMAX = 800, COCK = 150;
+  const MOAT = {x1:268,x2:352};
+  const target = {x:540,tx:540,y:296,r:46};
+  const stats = {att:0,hits:0,bulls:0,pts:0};
+  const fx = makeFx(), parts = makeParticles();
+  let angle = 45, power = 60, wind = 0, clock = 0, tShake = 0;
+  let mode = 'ready'; // ready | swinging | flying | resolving | returning | uploading | winding
+  let armDeg = COCK, armTw = null, wob = {amp:0,t:0};
+  let proj = null, ret = null, shotFile = null, fireDisabledCache = null;
+  const CRITTERS = [
+    {e:'🐑',line:'BAAAH!',sfx:'boing',say:'A sheep was in the way. The sheep has opinions now.'},
+    {e:'🐔',line:'BAWK BAWK!',sfx:'boing',say:'A chicken was startled and has filed a formal complaint.'},
+    {e:'🐄',line:'MOOOO!',sfx:'boing',say:'A cow was hit by an unrequested document. It is not impressed.'},
+    {e:'🦆',line:'QUACK!!',sfx:'boing',say:'A duck took the hit for you. It will remember this.'}
+  ];
+  const SPLASH_LINES = [
+    'The moat has your file. It did not consent to this.',
+    'Your file is swimming. Paper was not designed for this.',
+    'The moat accepts uploads too, apparently. Just not to your server.'
+  ];
+  const NEAR_LINES = [
+    'So close! The target guard is trying very hard not to laugh.',
+    'A near miss. The guard is laughing anyway.',
+    'Millimetres. Well, several hundred pixels. Same thing.'
+  ];
+  const DRAGON_LINES = [
+    'Overshot! A dragon caught your file, chewed on it, and thought better of it.',
+    'Your file left the kingdom. A dragon is returning it, with a burp.'
+  ];
+
+  wireDrop(wrap);
+  function newWind(){ do{ wind = Math.round(rand(-70,70)); }while(Math.abs(wind) < 12); }
+  newWind();
+  function updateHud(){ el.att.textContent = stats.att; el.hits.textContent = stats.hits; el.bulls.textContent = stats.bulls; el.pts.textContent = stats.pts; }
+  angleIn.addEventListener('input',function(){ angle = +angleIn.value; angleOut.textContent = angle+'°'; });
+  powerIn.addEventListener('input',function(){ power = +powerIn.value; powerOut.textContent = power+'%'; });
+  fireBtn.addEventListener('click',function(){ Sound.unlock(); fire(); });
+
+  function tipAt(deg){ const r = deg*Math.PI/180; return {x:PIVOT.x+Math.cos(r)*ARM, y:PIVOT.y+Math.sin(r)*ARM}; }
+  function bucketPos(deg){ const t = tipAt(deg); return {x:t.x,y:t.y-12}; }
+  function tweenArm(to,dur,ease,done){ armTw = {from:armDeg,to:to,t:0,dur:dur,ease:ease,done:done}; }
+  function pickTargetX(){ let x; do{ x = Math.round(rand(470,650)); }while(Math.abs(x-target.tx) < 70); return x; }
+
+  /* ---- firing ---- */
+  function fire(){
+    if(state.uploading) return;
+    if(!state.file){ say('Nothing to launch. Drop a file into the bucket first.','bad'); return; }
+    if(mode !== 'ready') return;
+    stats.att++; updateHud();
+    shotFile = state.file; mode = 'swinging';
+    Sound.play('creak'); say('Releasing the arm…');
+    tweenArm(360-angle,0.32,function(u){ return u*u; },release);
+  }
+  function release(){
+    const a = angle*Math.PI/180, v = power/100*VMAX, b = bucketPos(armDeg);
+    proj = {x:b.x,y:b.y,vx:Math.cos(a)*v,vy:-Math.sin(a)*v,rot:0,vr:rand(-7,7),mode:'flying',age:0,file:shotFile,hidden:false,sx:0,sy:0};
+    Sound.play('twang'); wob = {amp:7,t:0}; mode = 'flying';
+  }
+  function flyStep(dt){
+    const p = proj;
+    p.vx += wind*dt; p.vy += G*dt; p.x += p.vx*dt; p.y += p.vy*dt; p.rot += p.vr*dt; p.age += dt;
+    if(Math.hypot(p.x-target.x,p.y-target.y) < target.r+8 && Math.abs(target.x-target.tx) < 3){ onHit(); return; }
+    if(p.y >= GROUND-12 && p.vy > 0){ onLand(); return; }
+    if(p.x > CW+40 || p.x < -60 || p.age > 9){ onFar(); }
+  }
+
+  /* ---- outcomes ---- */
+  function onHit(){
+    const p = proj, d = Math.hypot(p.x-target.x,p.y-target.y), bull = d < 15;
+    mode = 'uploading'; p.mode = 'stuck';
+    p.sx = clamp(p.x-target.x,-target.r,target.r); p.sy = clamp(p.y-target.y,-target.r,target.r); p.vx = p.vy = 0;
+    tShake = 1; stats.hits++; if(bull) stats.bulls++; stats.pts += bull ? 150 : 100; updateHud();
+    Sound.play('thud'); fx.later(0.2,function(){ Sound.play('cheer'); });
+    parts.burst(p.x,p.y,26,{min:100,max:380,life:1});
+    fx.text(bull ? 'BULLSEYE!!' : 'DIRECT HIT!',clamp(target.x,130,CW-130),target.y-112,{color:'#ffd166',size:32});
+    say((bull ? 'Bullseye! ' : 'Direct hit! ')+'Hauling "'+p.file.name+'" up to the server by rope…','good');
+    fx.later(0.8,function(){ uploadFile(p.file,'File Catapult').then(afterUpload); });
+  }
+  function afterUpload(ok){
+    if(!proj){ mode = 'ready'; return; }
+    if(ok){
+      say('Upload complete. The target has moved, out of embarrassment.','good');
+      parts.burst(target.x,target.y,40,{min:120,max:420,life:1.3});
+      proj = null; target.tx = pickTargetX(); mode = 'winding';
+      Sound.play('creak');
+      tweenArm(COCK,0.9,easeInOut,function(){ mode = 'ready'; newWind(); });
+    } else {
+      say('The upload failed. The catapult files a complaint.','bad');
+      startReturn(target.x+proj.sx,target.y+proj.sy);
+    }
+  }
+  function onLand(){
+    const p = proj, lx = p.x;
+    p.y = GROUND-12; mode = 'resolving';
+    if(lx >= MOAT.x1-4 && lx <= MOAT.x2+4) splashOutcome(lx);
+    else if(lx > target.x+75) dragonOutcome(lx,p.y,false);
+    else if(Math.abs(lx-target.x) <= 75) nearOutcome();
+    else critterOutcome();
+  }
+  function onFar(){ mode = 'resolving'; dragonOutcome(proj.x,clamp(proj.y,100,300),true); }
+  function tumble(p){
+    p.mode = 'tumble'; p.vy = -Math.abs(p.vy)*0.4; p.vx *= 0.5; p.vr = p.vx*0.03; Sound.play('thud');
+  }
+  function splashOutcome(lx){
+    const p = proj; p.mode = 'float'; p.x = lx; p.y = GROUND+6;
+    Sound.play('splash'); fx.later(0.15,function(){ Sound.play('sad'); });
+    fx.ripple(lx,GROUND+2); fx.later(0.25,function(){ fx.ripple(lx,GROUND+2); });
+    parts.burst(lx,GROUND,24,{angle:-Math.PI/2,spread:0.8,min:160,max:440,colors:['#9fdcff','#d6f2ff','#5cb8ff'],shape:'circle',life:0.9});
+    fx.text('SPLOOSH!',clamp(lx,90,CW-90),GROUND-90,{color:'#9fdcff',size:30});
+    fx.emoji({e:'🐟',x:lx+34,y:GROUND+10,dx:-48,dy:0,hop:90,dur:0.9,wait:0.5,size:30});
+    fx.later(0.9,function(){ fx.text('glub glub…',clamp(lx,90,CW-90),GROUND-50,{color:'#d6f2ff',size:20}); });
+    say(pick(SPLASH_LINES),'bad');
+    fx.later(2,function(){ startReturn(lx,GROUND+6); });
+  }
+  function nearOutcome(){
+    const p = proj; tumble(p);
+    fx.later(0.1,function(){ Sound.play('sad'); });
+    fx.text('SO CLOSE!',clamp(p.x,90,CW-90),GROUND-110,{color:'#ffd166',size:28});
+    fx.emoji({e:'🤣',x:clamp(target.x+70,60,CW-60),y:GROUND-70,dx:0,dy:0,hop:24,dur:1.6,size:48,showWait:true});
+    say(pick(NEAR_LINES),'bad');
+    fx.later(2,function(){ if(proj) startReturn(proj.x,proj.y); });
+  }
+  function critterOutcome(){
+    const p = proj; tumble(p);
+    const k = pick(CRITTERS), side = Math.random() < 0.5 ? -1 : 1;
+    const cx = clamp(p.x+side*rand(45,70),50,CW-50), cy = GROUND-18;
+    fx.emoji({e:k.e,x:cx,y:cy,dx:0,dy:0,hop:120,spin:side*6.283,dur:0.7,wait:0.25,size:44,showWait:true});
+    fx.later(0.25,function(){ Sound.play(k.sfx); fx.text(k.line,cx,cy-70,{color:'#fff',size:22}); });
+    fx.emoji({e:k.e,x:cx,y:cy,dx:-side*340,dy:0,hop:14,dur:1.3,wait:0.95,size:44,flip:side < 0});
+    fx.later(0.9,function(){ Sound.play('sad'); });
+    say(k.say,'bad');
+    fx.later(2.2,function(){ if(proj) startReturn(proj.x,proj.y); });
+  }
+  function dragonOutcome(px,py,offscreen){
+    const p = proj, ex = clamp(px,560,CW-50), ey = offscreen ? clamp(py,100,300) : GROUND-34;
+    p.mode = offscreen ? 'gone' : 'rest'; p.vx = p.vy = 0;
+    if(offscreen) p.hidden = true;
+    say(pick(DRAGON_LINES),'bad');
+    fx.emoji({e:'🐉',x:CW+80,y:40,dx:ex-(CW+80),dy:ey-40,hop:50,dur:0.9,wait:0.1,size:72,linger:0.9});
+    fx.later(1.0,function(){ if(proj){ proj.hidden = true; } Sound.play('poof'); fx.text('OM NOM',ex,ey-60,{color:'#ffb36b',size:24}); });
+    fx.later(1.6,function(){ Sound.play('burp'); fx.text('BURP!',ex,ey-60,{color:'#b6ff8a',size:30}); if(proj) startReturn(ex,ey-10); });
+    fx.emoji({e:'🐉',x:ex,y:ey,dx:CW+130-ex,dy:-ey+10,hop:30,dur:0.9,wait:1.9,size:72,flip:true});
+  }
+  function startReturn(x0,y0){
+    if(!proj){ mode = 'ready'; return; }
+    proj.mode = 'returning'; proj.hidden = false;
+    ret = {t:0,dur:1.0,x0:x0,y0:y0}; mode = 'returning';
+    tweenArm(COCK,1.0,easeInOut,null); Sound.play('creak');
+  }
+
+  /* ---- update ---- */
+  function update(dt){
+    clock += dt; fx.update(dt); parts.update(dt);
+    tShake = Math.max(0,tShake-dt*1.8);
+    target.x += (target.tx-target.x)*Math.min(1,dt*3);
+    if(armTw){
+      armTw.t += dt; const u = clamp(armTw.t/armTw.dur,0,1);
+      armDeg = lerp(armTw.from,armTw.to,armTw.ease(u));
+      if(u >= 1){ const d = armTw.done; armTw = null; if(d) d(); }
+    }
+    if(wob.amp > 0.05){ wob.t += dt; wob.amp *= Math.exp(-6*dt); } else wob.amp = 0;
+
+    if(mode === 'flying' && proj){
+      for(let i=0;i<3 && mode==='flying' && proj;i++) flyStep(dt/3);
+      if(mode === 'flying' && proj) parts.burst(proj.x,proj.y,1,{min:5,max:25,g:0,life:0.35,colors:['rgba(255,255,255,.8)'],shape:'circle'});
+    }
+    if(proj && proj.mode === 'tumble'){
+      const p = proj;
+      p.vy += G*dt; p.x += p.vx*dt; p.y += p.vy*dt; p.rot += p.vr*dt;
+      if(p.y >= GROUND-12){
+        p.y = GROUND-12;
+        if(Math.abs(p.vy) > 80){ p.vy = -p.vy*0.4; Sound.play('thud',0.5); } else p.vy = 0;
+        p.vx *= Math.exp(-3*dt); p.vr *= Math.exp(-3*dt);
+      }
+    }
+    if(mode === 'returning' && ret && proj){
+      ret.t += dt; const u = clamp(ret.t/ret.dur,0,1), e = easeInOut(u), b = bucketPos(armDeg);
+      proj.x = lerp(ret.x0,b.x,e); proj.y = lerp(ret.y0,b.y,e)-Math.sin(u*Math.PI)*150; proj.rot += dt*9;
+      if(u >= 1){
+        proj = null; ret = null; mode = 'ready'; Sound.play('thud'); newWind();
+      }
+    }
+    const disabled = !(mode === 'ready' && state.file);
+    if(disabled !== fireDisabledCache){ fireDisabledCache = disabled; fireBtn.disabled = disabled; }
+  }
+
+  /* ---- drawing ---- */
+  function drawScenery(){
+    const sky = c.createLinearGradient(0,0,0,GROUND);
+    sky.addColorStop(0,'#1f2f5c'); sky.addColorStop(0.6,'#7a5a8c'); sky.addColorStop(1,'#f2916a');
+    c.fillStyle = sky; c.fillRect(0,0,CW,GROUND);
+    const sun = c.createRadialGradient(650,GROUND-80,6,650,GROUND-80,58);
+    sun.addColorStop(0,'#fff2c2'); sun.addColorStop(1,'rgba(255,210,140,0)');
+    c.fillStyle = sun; c.fillRect(560,GROUND-170,180,180);
+    c.save(); c.globalAlpha = 0.55; c.font = '58px '+EMOJI; c.textAlign = 'center'; c.textBaseline = 'middle';
+    for(let i=0;i<3;i++){
+      const x = ((clock*8+i*330)%(CW+240))-120;
+      c.fillText('☁️',x,52+i*34);
+    }
+    c.restore();
+    c.fillStyle = '#44366e';
+    c.beginPath(); c.moveTo(0,GROUND);
+    for(let x=0;x<=CW;x+=20) c.lineTo(x,GROUND-70-Math.sin(x*0.012+1)*26-Math.sin(x*0.031)*8);
+    c.lineTo(CW,GROUND); c.closePath(); c.fill();
+    c.font = '96px '+EMOJI; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillText('🏰',728,GROUND-52);
+    c.fillStyle = '#2d5a3a';
+    c.beginPath(); c.moveTo(0,GROUND);
+    for(let x=0;x<=CW;x+=20) c.lineTo(x,GROUND-30-Math.sin(x*0.02+3)*14);
+    c.lineTo(CW,GROUND); c.closePath(); c.fill();
+  }
+  function drawGround(){
+    c.fillStyle = '#5a3d25'; c.fillRect(0,GROUND,CW,CH-GROUND);
+    c.fillStyle = '#4f8a46'; c.fillRect(0,GROUND,CW,12);
+    const w = MOAT.x2-MOAT.x1;
+    c.fillStyle = '#1f6bb5'; c.fillRect(MOAT.x1,GROUND,w,CH-GROUND);
+    c.fillStyle = '#5cb8ff'; c.beginPath(); c.moveTo(MOAT.x1,GROUND+8);
+    for(let x=MOAT.x1;x<=MOAT.x2;x+=4) c.lineTo(x,GROUND+Math.sin(x*0.15+clock*4)*2);
+    c.lineTo(MOAT.x2,GROUND+8); c.closePath(); c.fill();
+    c.fillStyle = 'rgba(255,255,255,.8)'; c.font = '800 11px system-ui,sans-serif'; c.textAlign = 'center';
+    c.fillText('MOAT',(MOAT.x1+MOAT.x2)/2,GROUND+32);
+  }
+  function drawWind(){
+    const x = 420, top = GROUND-66, dir = wind > 0 ? 1 : -1, mag = Math.abs(wind)/70;
+    c.save();
+    c.strokeStyle = '#3a2a1a'; c.lineWidth = 4; c.beginPath(); c.moveTo(x,GROUND); c.lineTo(x,top); c.stroke();
+    const len = 14+mag*34;
+    for(let i=0;i<5;i++){
+      const u0 = i/5, u1 = (i+1)/5;
+      const x0 = x+dir*len*u0, x1 = x+dir*len*u1;
+      const wav = Math.sin(clock*(4+mag*8)-i)*3*mag;
+      const droop = (1-mag)*u1*10;
+      c.fillStyle = i%2 ? '#fff' : '#ff6b2c';
+      c.beginPath();
+      c.moveTo(x0,top+u0*0+(i===0?0:Math.sin(clock*(4+mag*8)-i+1)*3*mag)+ (1-mag)*u0*10);
+      c.lineTo(x1,top+wav+droop);
+      c.lineTo(x1,top+12-u1*5+wav+droop);
+      c.lineTo(x0,top+12-u0*5+(1-mag)*u0*10);
+      c.closePath(); c.fill();
+    }
+    c.fillStyle = '#fff'; c.font = '800 13px system-ui,sans-serif'; c.textAlign = 'center';
+    c.strokeStyle = 'rgba(0,0,0,.6)'; c.lineWidth = 3;
+    const arrows = dir > 0 ? '→'.repeat(1+Math.round(mag*3)) : '←'.repeat(1+Math.round(mag*3));
+    const label = 'WIND '+arrows+' '+Math.abs(wind);
+    c.strokeText(label,x,top-12); c.fillText(label,x,top-12);
+    c.restore();
+  }
+  function drawTarget(){
+    const sx = Math.sin(clock*60)*3*tShake, x = target.x+sx, y = target.y;
+    c.fillStyle = '#6b4a2b'; c.fillRect(x-5,y,10,GROUND-y);
+    c.fillStyle = '#8a5a2b'; rr(c,x-44,y-86,88,22,5); c.fill();
+    c.fillStyle = '#fff'; c.font = '800 12px system-ui,sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillText('UPLOAD HERE',x,y-75);
+    const rings = [[46,'#7a4f26'],[42,'#f4efe1'],[33,'#c0392b'],[24,'#f4efe1'],[15,'#c0392b'],[7,'#ffd166']];
+    for(const rg of rings){ c.fillStyle = rg[1]; c.beginPath(); c.arc(x,y,rg[0],0,6.3); c.fill(); }
+  }
+  function drawCatapult(){
+    c.save(); c.lineCap = 'round'; c.lineJoin = 'round';
+    c.strokeStyle = '#6b4a2b'; c.lineWidth = 9;
+    c.beginPath(); c.moveTo(PIVOT.x-46,GROUND-16); c.lineTo(PIVOT.x,PIVOT.y); c.lineTo(PIVOT.x+46,GROUND-16); c.stroke();
+    c.lineWidth = 11; c.beginPath(); c.moveTo(PIVOT.x-80,GROUND-16); c.lineTo(PIVOT.x+72,GROUND-16); c.stroke();
+    for(const wx of [PIVOT.x-58,PIVOT.x+50]){
+      c.fillStyle = '#4a3320'; c.strokeStyle = '#2b1d10'; c.lineWidth = 3;
+      c.beginPath(); c.arc(wx,GROUND-12,15,0,6.3); c.fill(); c.stroke();
+      c.beginPath(); c.moveTo(wx-15,GROUND-12); c.lineTo(wx+15,GROUND-12); c.moveTo(wx,GROUND-27); c.lineTo(wx,GROUND+3); c.stroke();
+    }
+    const deg = armDeg+wob.amp*Math.sin(wob.t*40), r = deg*Math.PI/180, cs = Math.cos(r), sn = Math.sin(r);
+    const tip = {x:PIVOT.x+cs*ARM,y:PIVOT.y+sn*ARM};
+    c.strokeStyle = '#8a5a2b'; c.lineWidth = 9;
+    c.beginPath(); c.moveTo(PIVOT.x-cs*30,PIVOT.y-sn*30); c.lineTo(tip.x,tip.y); c.stroke();
+    c.fillStyle = '#555a6e'; c.beginPath(); c.arc(PIVOT.x-cs*30,PIVOT.y-sn*30,11,0,6.3); c.fill();
+    c.fillStyle = '#a37a45'; c.beginPath(); c.arc(tip.x,tip.y-2,14,0,Math.PI); c.fill();
+    c.fillStyle = '#3a2a1a'; c.beginPath(); c.arc(PIVOT.x,PIVOT.y,6,0,6.3); c.fill();
+    c.restore();
+  }
+  function drawGuide(){
+    if(mode !== 'ready' || !state.file) return;
+    const a = angle*Math.PI/180;
+    c.save(); c.strokeStyle = 'rgba(255,255,255,.55)'; c.lineWidth = 2; c.setLineDash([5,5]);
+    c.beginPath(); c.moveTo(PIVOT.x,PIVOT.y); c.lineTo(PIVOT.x+90,PIVOT.y); c.stroke();
+    c.beginPath(); c.moveTo(PIVOT.x,PIVOT.y); c.lineTo(PIVOT.x+Math.cos(a)*(ARM+36),PIVOT.y-Math.sin(a)*(ARM+36)); c.stroke();
+    c.setLineDash([]); c.beginPath(); c.arc(PIVOT.x,PIVOT.y,58,0,-a,true); c.stroke();
+    c.fillStyle = '#fff'; c.font = '800 14px system-ui,sans-serif'; c.textAlign = 'left';
+    c.fillText(angle+'°',PIVOT.x+66*Math.cos(a/2)+4,PIVOT.y-66*Math.sin(a/2));
+    if(guideCb.checked){
+      const b = bucketPos(360-angle), v = power/100*VMAX, vx = Math.cos(a)*v, vy = -Math.sin(a)*v;
+      for(let i=1;i<=60;i++){
+        const t = i*0.04, x = b.x+vx*t+0.5*wind*t*t, y = b.y+vy*t+0.5*G*t*t;
+        if(y > GROUND-12 || x > CW) break;
+        c.globalAlpha = Math.max(0.15,1-i/60); c.fillStyle = '#ffd166';
+        c.beginPath(); c.arc(x,y,3,0,6.3); c.fill();
+      }
+    }
+    c.restore();
+  }
+  function drawProj(){
+    if(mode === 'ready' || mode === 'swinging' || mode === 'winding'){
+      if((mode === 'ready' || mode === 'swinging') && state.file){
+        const b = bucketPos(armDeg+wob.amp*Math.sin(wob.t*40));
+        drawFileSprite(c,b.x,b.y,30,0,state.file.name,1);
+      }
+      return;
+    }
+    if(!proj || proj.hidden) return;
+    const p = proj; let x = p.x, y = p.y, rot = p.rot, a = 1;
+    if(p.mode === 'stuck'){ x = target.x+p.sx+Math.sin(clock*60)*3*tShake; y = target.y+p.sy; }
+    if(p.mode === 'float'){ y = GROUND+6+Math.sin(clock*5)*3; rot = Math.sin(clock*3)*0.4; a = 0.8; }
+    c.globalAlpha = a; drawFileSprite(c,x,y,30,rot,p.file.name,1); c.globalAlpha = 1;
+  }
+  function drawGauge(){
+    if(mode !== 'ready') return;
+    const gx = 20, gy = CH-30, gw = 220;
+    c.save();
+    c.fillStyle = 'rgba(0,0,0,.55)'; rr(c,gx,gy,gw,14,7); c.fill();
+    const grad = c.createLinearGradient(gx,0,gx+gw,0);
+    grad.addColorStop(0,'#3ddc97'); grad.addColorStop(0.6,'#ffd166'); grad.addColorStop(1,'#ff5c7a');
+    c.fillStyle = grad; rr(c,gx,gy,Math.max(8,gw*power/100),14,7); c.fill();
+    c.fillStyle = '#fff'; c.font = '800 13px system-ui,sans-serif'; c.textAlign = 'left';
+    c.fillText('TENSION '+power+'%',gx,gy-8);
+    c.restore();
+  }
+  function draw(){
+    c.clearRect(0,0,CW,CH);
+    drawScenery(); drawGround(); drawWind(); drawTarget(); drawCatapult(); drawGuide(); drawProj();
+    parts.draw(c); fx.draw(c); drawGauge();
+    if(!state.file && mode === 'ready') dropOverlay(c,'Drop a file to load the catapult','(or use the Choose file button above)');
+  }
+
+  updateHud();
+  return {update:update,draw:draw,busy:function(){ return mode !== 'ready'; }};
+})();
+
+/* ================= TABS, MUTE, BORING BUTTON, MAIN LOOP ================= */
+let active = 'bb';
+function showTab(which){
+  active = which;
+  $('#oc-panel-bb').hidden = which !== 'bb';
+  $('#oc-panel-ct').hidden = which !== 'ct';
+  $('#oc-tab-bb').setAttribute('aria-selected',String(which === 'bb'));
+  $('#oc-tab-ct').setAttribute('aria-selected',String(which === 'ct'));
+  Sound.play('pick');
+}
+$('#oc-tab-bb').addEventListener('click',function(){ showTab('bb'); });
+$('#oc-tab-ct').addEventListener('click',function(){ showTab('ct'); });
+
+$('#oc-mute').addEventListener('click',function(e){
+  const m = !Sound.isMuted();
+  Sound.setMuted(m);
+  e.currentTarget.textContent = m ? '🔇 Sound off' : '🔊 Sound on';
+  e.currentTarget.setAttribute('aria-pressed',String(m));
+});
+root.addEventListener('pointerdown',function(){ Sound.unlock(); },{passive:true});
+
+$('#oc-boring').addEventListener('click',function(){
+  if(!state.file){ say('There is nothing to upload. Not even the boring way.','bad'); return; }
+  if(isBusy()){ say('Something is already in flight. Patience is the boring button of virtues.','bad'); return; }
+  say("Fine. Uploading like it's 1999…");
+  uploadFile(state.file,'The Boring Button (shameful)').then(function(ok){
+    say(ok ? 'Uploaded. Zero joy was generated.' : 'Even the boring way failed. Impressive.', ok ? 'good' : 'bad');
+  });
+});
+
+let last = performance.now();
+function frame(now){
+  const dt = Math.min(0.033,(now-last)/1000); last = now;
+  const A = active === 'bb' ? BB : CT;
+  A.update(dt); A.draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+})();
+</script>
+</body>
+</html>
